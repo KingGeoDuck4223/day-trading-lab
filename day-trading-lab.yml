@@ -1,0 +1,50 @@
+name: Day Trading Lab
+
+# Schedule is in UTC. These times assume US Eastern Daylight Time (EDT, UTC-4),
+# which is what applies right now (summer 2026). When the US switches back to
+# Eastern Standard Time (EST, UTC-5) in early November, shift every hour value
+# here forward by 1 (e.g. 13:35 UTC -> 14:35 UTC) to keep hitting the same ET times.
+on:
+  schedule:
+    - cron: '35 13 * * 1-5'   # ~9:35am ET — scan for an entry shortly after the open
+    - cron: '0 17 * * 1-5'    # ~1:00pm ET  — midday check: exit on target, or keep holding
+    - cron: '45 19 * * 1-5'   # ~3:45pm ET  — forced close, nothing held overnight
+  workflow_dispatch: {}        # lets you trigger a one-off test run manually from the Actions tab
+
+concurrency:
+  group: day-trading-lab
+  cancel-in-progress: false   # never cancel a run that might be mid-trade
+
+permissions:
+  contents: write              # so it can commit state.json/log.md/memory.md updates
+
+jobs:
+  run-cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run the trading-lab agent cycle
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Follow the instructions in day-trading-lab/routine-prompt.md exactly,
+            start to finish, for this one cycle.
+
+            All files it references (state.json, log.md, memory.md) live in the
+            day-trading-lab/ folder of this repo, not the repo root — read and
+            write them there.
+
+            When you're done, commit and push your changes directly to this
+            branch yourself using git. Do not open a pull request — this is an
+            automated journal/state update, not a code change that needs review.
+          claude_args: >-
+            --mcp-config day-trading-lab/mcp-config.json
+            --allowedTools "Bash(git:*),Read,Write,Edit,mcp__robinhood"
+            --permission-mode acceptEdits
+            --max-turns 40
+            --output-format json
